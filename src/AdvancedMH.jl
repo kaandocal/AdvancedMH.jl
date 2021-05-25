@@ -121,4 +121,9 @@ include("proposal.jl")
 include("mh-core.jl")
 include("emcee.jl")
 
+# Tempering
+import MCMCTempering
+include("tempering.jl")
+export Joint, TemperedJoint, make_tempered_model, make_tempered_logπ, get_θ
+
 end # module AdvancedMH
