@@ -41,12 +41,26 @@ used if `chain_type=Chains`.
 types are `chain_type=Chains` if `MCMCChains` is imported, or 
 `chain_type=StructArray` if `StructArrays` is imported.
 """
-struct MetropolisHastings{D} <: MHSampler
+struct MetropolisHastings{D,A} <: MHSampler
     proposal::D
+    adaptor::A
 end
 
-StaticMH(d) = MetropolisHastings(StaticProposal(d))
-RWMH(d) = MetropolisHastings(RandomWalkProposal(d))
+MetropolisHastings(d) = MetropolisHastings(d, noadaptation(d))
+
+StaticMH(d, a) = MetropolisHastings(StaticProposal(d), a)
+function StaticMH(d)
+    prop = StaticProposal(d)
+    MetropolisHastings(prop, noadaptation(prop))
+end
+
+RWMH(d, a) = MetropolisHastings(RandomWalkProposal(d), a)
+function RWMH(d)
+    prop = RandomWalkProposal(d)
+    MetropolisHastings(prop, noadaptation(prop))
+end
+
+AdaptiveMH(d) = MetropolisHastings(SymmetricRandomWalkProposal(d), AMAdaptor(d))
 
 # default function without RNG
 propose(spl::MetropolisHastings, args...) = propose(Random.GLOBAL_RNG, spl, args...)
@@ -141,29 +155,13 @@ end
 transition(sampler, model, params) = transition(model, params)
 transition(model, params) = Transition(model, params)
 
-# Called to update proposal when the first sample is drawn
-trackstep(proposal::Proposal, params) = nothing
-trackstep(proposal::AbstractArray, params) = foreach(trackstep, proposal, params)
-trackstep(proposal::NamedTuple, params) = foreach(trackstep, proposal, params)
-
-# Called to update proposal when a new step is performed
-# The last argument determines if the step is an acceptance step
-trackstep(proposal::Proposal, params, 
-          ::Union{Val{true}, Val{false}}) = nothing
-
-trackstep(proposal::AbstractArray, params, accept::Union{Val{true},Val{false}}) = 
-          foreach((prop, par) -> trackstep(prop, par, accept), proposal, params)
-
-trackstep(proposal::NamedTuple, params, accept::Union{Val{true},Val{false}}) = 
-          foreach((prop, par) -> trackstep(prop, par, accept), proposal, params)
-
 # Define the first sampling step.
 # Return a 2-tuple consisting of the initial sample and the initial state.
 # In this case they are identical.
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,
     model::DensityModel,
-    spl::MHSampler;
+    spl::MetropolisHastings;
     init_params=nothing,
     kwargs...
 )
@@ -173,7 +171,7 @@ function AbstractMCMC.step(
         transition = AdvancedMH.transition(spl, model, init_params)
     end
 
-    trackstep(spl.proposal, transition.params)
+    initialize!(spl.adaptor, spl.proposal, transition.params)
     return transition, transition
 end
 
@@ -184,7 +182,7 @@ end
 function AbstractMCMC.step(
     rng::Random.AbstractRNG,
     model::DensityModel,
-    spl::MHSampler,
+    spl::MetropolisHastings,
     params_prev::AbstractTransition;
     kwargs...
 )
@@ -197,10 +195,10 @@ function AbstractMCMC.step(
 
     # Decide whether to return the previous params or the new one.
     if -Random.randexp(rng) < logα
-        trackstep(spl.proposal, params.params, Val(true))
+        adapt!(spl.adaptor, spl.proposal, params.params, Val(true))
         return params, params
     else
-        trackstep(spl.proposal, params_prev.params, Val(false))
+        adapt!(spl.adaptor, spl.proposal, params_prev.params, Val(false))
         return params_prev, params_prev
     end
 end

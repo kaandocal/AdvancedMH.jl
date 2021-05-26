@@ -62,17 +62,32 @@ include("util.jl")
         # Set up our sampler with initial parameters.
         doubledensity(θ::Vector{Float64}) = density(θ[1:2]) + density(θ[3:4])
         doubledensity(θ::Vector{Vector{Float64}}) = density(θ[1]) + density(θ[2])
+        doubledensity(θ::NamedTuple) = density(θ[1]) + density(θ[2])
         doublemodel = DensityModel(doubledensity)
 
-        spl1 = MetropolisHastings(AMProposal(diagm([0.01, 0.01, 0.01, 0.01])))
-        spl2 = MetropolisHastings([AMProposal(diagm([0.01, 0.01])), 
-                                   AMProposal(diagm([0.01, 0.01]))])
+        spl1 = AdaptiveMH(MvNormal(zeros(4), diagm([0.01, 0.01, 0.01, 0.01])))
+
+        mvn2a = MvNormal(zeros(2), diagm([0.01, 0.01]))
+        mvn2b = MvNormal(zeros(2), diagm([0.01, 0.01]))
+
+        spl2 = MetropolisHastings([SymmetricRandomWalkProposal(mvn2a), 
+                                   SymmetricRandomWalkProposal(mvn2b)], 
+                                  [AMAdaptor(mvn2a), AMAdaptor(mvn2b)])
+
+        mvn3a = MvNormal(zeros(2), diagm([0.01, 0.01]))
+        mvn3b = MvNormal(zeros(2), diagm([0.01, 0.01]))
+
+        spl3 = MetropolisHastings((p1 = SymmetricRandomWalkProposal(mvn2a), 
+                                   p2 = SymmetricRandomWalkProposal(mvn2b)), 
+                                  (p1 = AMAdaptor(mvn3a), p2 = AMAdaptor(mvn3b)))
+
 
         # Sample from the posterior.
         chain1 = sample(doublemodel, spl1, 100000; chain_type=StructArray, 
                         param_names=["μ1", "σ1", "μ2", "σ2"])
-        chain2 = sample(doublemodel, spl2, 100000; chain_type=StructArray, 
+        chain2 = sample(doublemodel, spl2, 100000; chain_type=StructArray,
                         param_names=["p1", "p2"])
+        chain3 = sample(doublemodel, spl3, 100000; chain_type=StructArray)
 
         # chn_mean ≈ dist_mean atol=atol_v
         @test mean(chain1.μ1) ≈ 0.0 atol=0.1
@@ -82,6 +97,9 @@ include("util.jl")
 
         @test mean(chain2.p1) ≈ [ 0.0 1.0 ]' atol=0.1
         @test mean(chain2.p2) ≈ [ 0.0 1.0 ]' atol=0.1
+
+        @test mean(chain3.p1) ≈ [ 0.0 1.0 ]' atol=0.1
+        @test mean(chain3.p2) ≈ [ 0.0 1.0 ]' atol=0.1
     end
 
     @testset "parallel sampling" begin

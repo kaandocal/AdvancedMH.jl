@@ -22,8 +22,7 @@ export
     Ensemble,
     StretchProposal,
     MALA,
-    AMProposal,
-    AMSampler
+    AMAdaptor, AdaptiveMH
 
 # Reexports
 export sample, MCMCThreads, MCMCDistributed
@@ -122,8 +121,8 @@ end
 
 # Include inference methods.
 include("proposal.jl")
+include("adaptive.jl")
 include("mh-core.jl")
 include("emcee.jl")
-include("adaptivemetropolis.jl")
 
 end # module AdvancedMH

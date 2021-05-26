@@ -36,6 +36,51 @@ function propose(
     return GradientTransition(model, proposal)
 end
 
+# Define the first sampling step.
+# Return a 2-tuple consisting of the initial sample and the initial state.
+# In this case they are identical.
+function AbstractMCMC.step(
+    rng::Random.AbstractRNG,
+    model::DensityModel,
+    spl::MALA;
+    init_params=nothing,
+    kwargs...
+)
+    if init_params === nothing
+        transition = propose(rng, spl, model)
+    else
+        transition = AdvancedMH.transition(spl, model, init_params)
+    end
+
+    return transition, transition
+end
+
+# Define the other sampling steps.
+# Return a 2-tuple consisting of the next sample and the the next state.
+# In this case they are identical, and either a new proposal (if accepted)
+# or the previous proposal (if not accepted).
+function AbstractMCMC.step(
+    rng::Random.AbstractRNG,
+    model::DensityModel,
+    spl::MALA,
+    params_prev::AbstractTransition;
+    kwargs...
+)
+    # Generate a new proposal.
+    params = propose(rng, spl, model, params_prev)
+
+    # Calculate the log acceptance probability.
+    logα = logdensity(model, params) - logdensity(model, params_prev) +
+        logratio_proposal_density(spl, params_prev, params)
+
+    # Decide whether to return the previous params or the new one.
+    if -Random.randexp(rng) < logα
+        return params, params
+    else
+        return params_prev, params_prev
+    end
+end
+
 
 function q(
     spl::MALA{<:Proposal},
